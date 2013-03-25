@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.android.BluetoothChat;
+package org.servalproject.audioHelper;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -42,9 +42,9 @@ import android.widget.Toast;
 /**
  * This is the main Activity that displays the current chat session.
  */
-public class BluetoothChat extends Activity {
+public class AudioHelper extends Activity {
     // Debugging
-    private static final String TAG = "BluetoothChat";
+    private static final String TAG = "AudioHelper";
 
     // Intent request codes
     private static final int REQUEST_CONNECT_DEVICE = 1;
@@ -55,7 +55,7 @@ public class BluetoothChat extends Activity {
     // Local Bluetooth adapter
     private BluetoothAdapter mBluetoothAdapter = null;
     // Member object for the chat services
-    private BluetoothChatService mChatService = null;
+    private BluetoothReceiver mBluetoothReceiver = null;
 
 
     @Override
@@ -84,7 +84,7 @@ public class BluetoothChat extends Activity {
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
         // Otherwise, setup the chat session
         } else {
-            if (mChatService == null) setupChat();
+            if (mBluetoothReceiver == null) setup();
         }
     }
 
@@ -95,14 +95,13 @@ public class BluetoothChat extends Activity {
         // Performing this check in onResume() covers the case in which BT was
         // not enabled during onStart(), so we were paused to enable it...
         // onResume() will be called when ACTION_REQUEST_ENABLE activity returns.
-        if (mChatService != null) {
-              mChatService.start();
+        if (mBluetoothReceiver != null) {
+              mBluetoothReceiver.start();
         }
     }
 
-    private void setupChat() {
-        // Initialize the BluetoothChatService to perform bluetooth connections
-        mChatService = new BluetoothChatService(this);
+    private void setup() {
+        mBluetoothReceiver = new BluetoothReceiver(this);
     }
 
     @Override
@@ -118,7 +117,7 @@ public class BluetoothChat extends Activity {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (mChatService != null) mChatService.stop();
+        if (mBluetoothReceiver != null) mBluetoothReceiver.stop();
     }
 
     private void ensureDiscoverable() {
@@ -137,9 +136,9 @@ public class BluetoothChat extends Activity {
     private void sendMessage(String message) {
         // Check that there's actually something to send
         if (message.length() > 0) {
-            // Get the message bytes and tell the BluetoothChatService to write
+            // Get the message bytes and tell the BluetoothReceiver to write
             byte[] send = message.getBytes();
-            mChatService.write(send);
+            mBluetoothReceiver.write(send);
         }
     }
 }
