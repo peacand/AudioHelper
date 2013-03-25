@@ -128,17 +128,4 @@ public class AudioHelper extends Activity {
             startActivity(discoverableIntent);
         }
     }
-
-    /**
-     * Sends a message.
-     * @param message  A string of text to send.
-     */
-    private void sendMessage(String message) {
-        // Check that there's actually something to send
-        if (message.length() > 0) {
-            // Get the message bytes and tell the BluetoothReceiver to write
-            byte[] send = message.getBytes();
-            mBluetoothReceiver.write(send);
-        }
-    }
 }

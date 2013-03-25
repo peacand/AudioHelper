@@ -21,6 +21,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.UUID;
 
+import org.servalproject.audio.AudioPlayer;
+import org.servalproject.batphone.VoMP;
+
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
@@ -51,9 +54,13 @@ public class BluetoothReceiver {
     private final BluetoothAdapter mAdapter;
     private AcceptThread mAcceptThread;
     private ConnectedThread mConnectedThread;
+    private AudioPlayer mPlayer;
+    private InputStream mInStream;
+    private BluetoothSocket mSocket;
 
     public BluetoothReceiver(Context context) {
         mAdapter = BluetoothAdapter.getDefaultAdapter();
+        mPlayer = new AudioPlayer(null, context);
     }
 
     public void start() {
@@ -85,23 +92,53 @@ public class BluetoothReceiver {
         if (mAcceptThread != null) {mAcceptThread.cancel(); mAcceptThread = null;}
     }
 
-    public void write(byte[] out) {
-        // Create temporary object
-        ConnectedThread r;
-        // Synchronize a copy of the ConnectedThread
-        synchronized (this) {
-            r = mConnectedThread;
-        }
-        // Perform the write unsynchronized
-        r.write(out);
-    }
-
     private void connectionFailed() {
         Log.v(TAG, "connection failed");
     }
 
     private void connectionLost() {
         Log.v(TAG, "connection lost");
+    }
+
+    public void executeMethod(String methodName) {
+        if( methodName.charAt(0) != '*' )
+            Log.v(TAG, "MethodCall : " + methodName );
+
+        try {
+            if( methodName.equals("prepareAudio") )
+                mPlayer.prepareAudio();
+            if( methodName.equals("startPlaying") )
+                mPlayer.startPlaying();
+            if( methodName.equals("stopPlaying") )
+                mPlayer.stopPlaying();
+            if( methodName.equals("cleanup") )
+                mPlayer.cleanup();
+            if( methodName.charAt(0) == '*' )
+                processAudioData( methodName.substring(1) );
+        } catch (Exception e) {
+            Log.v(TAG, "Error while calling " + methodName);
+        }
+    }
+
+    public void processAudioData(String header) {
+        Log.v(TAG, "Audio : " + header );
+
+        String fields[] = new String[7];
+        fields = header.split(":", 7);
+        
+        int byteCount = Integer.parseInt(fields[0]);
+        int local_session = Integer.parseInt(fields[1]);
+        int start_time = Integer.parseInt(fields[2]);
+        int jitter_delay = Integer.parseInt(fields[3]);
+        int this_delay = Integer.parseInt(fields[4]);
+        int codec_code = Integer.parseInt(fields[5]);
+        int codec_preference = Integer.parseInt(fields[6]);
+
+        try {
+            mPlayer.receivedAudio(local_session, start_time, jitter_delay, this_delay, VoMP.Codec.getCodec(codec_code), mInStream, byteCount);
+        } catch (Exception e) {
+           Log.v(TAG, "Problem with receivedAudio processing");
+        }
     }
 
     private class AcceptThread extends Thread {
@@ -155,41 +192,41 @@ public class BluetoothReceiver {
 
 
     private class ConnectedThread extends Thread {
-        private final BluetoothSocket mmSocket;
-        private final InputStream mmInStream;
-        private final OutputStream mmOutStream;
 
         public ConnectedThread(BluetoothSocket socket) {
             Log.d(TAG, "create ConnectedThread");
-            mmSocket = socket;
+            mSocket = socket;
             InputStream tmpIn = null;
-            OutputStream tmpOut = null;
 
             // Get the BluetoothSocket input and output streams
             try {
                 tmpIn = socket.getInputStream();
-                tmpOut = socket.getOutputStream();
             } catch (IOException e) {
                 Log.e(TAG, "temp sockets not created", e);
             }
 
-            mmInStream = tmpIn;
-            mmOutStream = tmpOut;
+            mInStream = tmpIn;
         }
 
         public void run() {
             Log.i(TAG, "BEGIN mConnectedThread");
-            byte[] buffer = new byte[1024];
-            int bytes;
+            char methodName[] = new char[126];
+            int bytes, index = 0;
 
             // Keep listening to the InputStream while connected
             while (true) {
                 try {
                     // Read from the InputStream
-                    bytes = mmInStream.read(buffer);
-
-                    // Send the obtained bytes to the UI Activity
-                    // ....
+                    bytes = mInStream.read();
+                    if( bytes == '\n' ) {
+                        executeMethod( new String(methodName, 0, index) );
+                        index = 0;
+                    }
+                    else if (bytes > 0) {
+                        methodName[index] = (char) bytes;
+                        index++;
+                    }
+                    
                 } catch (IOException e) {
                     Log.e(TAG, "disconnected", e);
                     connectionLost();
@@ -198,20 +235,9 @@ public class BluetoothReceiver {
             }
         }
 
-        public void write(byte[] buffer) {
-            try {
-                mmOutStream.write(buffer);
-
-                // Share the sent message back to the UI Activity
-                // ....
-            } catch (IOException e) {
-                Log.e(TAG, "Exception during write", e);
-            }
-        }
-
         public void cancel() {
             try {
-                mmSocket.close();
+                mSocket.close();
             } catch (IOException e) {
                 Log.e(TAG, "close() of connect socket failed", e);
             }
